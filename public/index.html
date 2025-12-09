@@ -1,1 +1,119 @@
-<html><body><h1>Scan Page</h1></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GlowBox Skin Scan</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; background-color: #f9f9f9; }
+        h1 { color: #333; }
+        #video { width: 100%; max-width: 400px; border-radius: 10px; background: #000; display: none; }
+        #preview { width: 100%; max-width: 400px; border-radius: 10px; display: none; margin: 10px auto; }
+        .btn {
+            background-color: #000; color: #fff; padding: 12px 24px; 
+            border: none; border-radius: 25px; font-size: 16px; 
+            cursor: pointer; margin: 10px;
+        }
+        .btn:disabled { opacity: 0.5; }
+        #result { margin-top: 20px; white-space: pre-wrap; text-align: left; background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display: none;}
+    </style>
+</head>
+<body>
+
+    <h1>GlowBox AI Scan</h1>
+    <p>Analyze your skin for personalized recommendations.</p>
+
+    <video id="video" autoplay playsinline></video>
+    
+    <img id="preview" alt="Your Scan">
+    
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <div id="controls">
+        <button id="startBtn" class="btn" onclick="startCamera()">Open Camera</button>
+        <button id="captureBtn" class="btn" style="display:none;" onclick="capturePhoto()">Take Photo</button>
+        <button id="analyzeBtn" class="btn" style="display:none;" onclick="analyzeSkin()">Analyze Skin</button>
+        <button id="resetBtn" class="btn" style="display:none;" onclick="location.reload()">Start Over</button>
+    </div>
+
+    <div id="result"></div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const preview = document.getElementById('preview');
+        const resultDiv = document.getElementById('result');
+
+        // 1. Start Camera
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "user" } 
+                });
+                video.srcObject = stream;
+                video.style.display = "block";
+                document.getElementById('startBtn').style.display = "none";
+                document.getElementById('captureBtn').style.display = "inline-block";
+            } catch (err) {
+                alert("Camera access denied or not available: " + err);
+            }
+        }
+
+        // 2. Capture Photo
+        function capturePhoto() {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            
+            // Show preview, hide video
+            const dataUrl = canvas.toDataURL('image/jpeg');
+            preview.src = dataUrl;
+            preview.style.display = "block";
+            video.style.display = "none";
+            
+            // Stop camera stream
+            video.srcObject.getTracks().forEach(track => track.stop());
+
+            document.getElementById('captureBtn').style.display = "none";
+            document.getElementById('analyzeBtn').style.display = "inline-block";
+            document.getElementById('resetBtn').style.display = "inline-block";
+        }
+
+        // 3. Send to Backend
+        async function analyzeSkin() {
+            const analyzeBtn = document.getElementById('analyzeBtn');
+            analyzeBtn.textContent = "Analyzing...";
+            analyzeBtn.disabled = true;
+            resultDiv.style.display = "none";
+
+            const imageData = canvas.toDataURL('image/jpeg').split(',')[1]; // Remove header
+
+            try {
+                // We send to /api because Vercel routes api/index.py to /api
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: imageData })
+                });
+
+                const data = await response.json();
+                
+                if (data.error) {
+                    resultDiv.innerHTML = "<strong>Error:</strong> " + data.error;
+                } else {
+                    // Format the AI response nicely
+                    resultDiv.innerHTML = "<strong>Analysis Results:</strong><br>" + data.analysis.replace(/\n/g, "<br>");
+                }
+                resultDiv.style.display = "block";
+
+            } catch (error) {
+                resultDiv.innerHTML = "<strong>Network Error:</strong> " + error;
+                resultDiv.style.display = "block";
+            } finally {
+                analyzeBtn.textContent = "Analyze Skin";
+                analyzeBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
